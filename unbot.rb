@@ -71,7 +71,7 @@ bot = Cinch::Bot.new do
 
   on :message, /^\s*([^!].+)/ do |m, text|
     topics.each do |topic|
-      if text.include? topic
+      if text.downcase.include? topic.downcase
         mentioned = false
         db.execute <<-SQL, topic do |row|
           SELECT * FROM mentions WHERE topic = ? ORDER BY posted_at DESC LIMIT 1
