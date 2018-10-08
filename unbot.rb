@@ -125,14 +125,22 @@ bot = Cinch::Bot.new do
       SQL
         if Time.now - Time.parse(row["posted_at"]) > 4 * 3600
           time_passed = TimeDifference.between(Time.now, Time.parse(row["posted_at"])).humanize
-          m.reply "*flips* time since previous mention of '#{topic}': #{time_passed.downcase} " +
-                  "(mentioned by #{row["posted_by"]})"
+          if topic == "69"
+            m.reply "nice"
+          else
+            m.reply "*flips* time since previous mention of '#{topic}': #{time_passed.downcase} " +
+                    "(mentioned by #{row["posted_by"]})"
+          end
         end
         mentioned = true
       end
 
       if !mentioned
-        m.reply "first mention of '#{topic}'! yay!"
+        if topic == "69"
+          m.reply "nice"
+        else
+          m.reply "first mention of '#{topic}'! yay!"
+        end
       end
 
       $db.execute <<-SQL, topic, m.user.nick
