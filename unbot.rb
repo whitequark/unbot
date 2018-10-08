@@ -24,18 +24,32 @@ $db.execute <<-SQL
   )
 SQL
 
-$words = File.read("/usr/share/dict/words").split("\n").map(&:downcase)
+class String
+  def toNFC
+    unicode_normalize(:nfc)
+  end
+
+  def toNFKC
+    unicode_normalize(:nfkc)
+  end
+
+  def toNFKC_Casefold
+    toNFKC.downcase
+  end
+end
+
+$words = File.read("/usr/share/dict/words").split("\n").map(&:toNFKC_Casefold)
 
 def reload!
-  $topics = []
-  $untopics = []
+  $topics = Set.new
+  $untopics = Set.new
   $db.execute <<-SQL do |row|
     SELECT * FROM topics
   SQL
     if row["untracked"] == 1
-      $untopics.push row["topic"]
+      $untopics.add row["topic"].toNFC
     else
-      $topics.push row["topic"]
+      $topics.add row["topic"].toNFC
     end
   end
 end
@@ -49,13 +63,13 @@ bot = Cinch::Bot.new do
   end
 
   on :message, /^!track (.+)/ do |m, topic|
-    if $untopics.include? topic
-      m.reply "not going to track '#{topic}' nope sorry", prefix: true
-    elsif $topics.include? topic
-      m.reply "already tracking topic '#{topic}'", prefix: true
+    if topic_nfc = $untopics.find { |t| t.toNFKC_Casefold == topic.toNFKC_Casefold }
+      m.reply "not going to track '#{topic_nfc}' nope sorry", prefix: true
+    elsif topic_nfc = $topics.find { |t| t.toNFKC_Casefold == topic.toNFKC_Casefold }
+      m.reply "already tracking topic '#{topic_nfc}'", prefix: true
     else
-      $topics.push topic
-      $db.execute <<-SQL, topic, m.user.nick
+      $topics.add topic.toNFC
+      $db.execute <<-SQL, topic.toNFC, m.user.nick
         INSERT INTO topics (topic, added_by) VALUES (?, ?)
       SQL
       m.reply "now tracking topic '#{topic}'", prefix: true
@@ -64,11 +78,15 @@ bot = Cinch::Bot.new do
 
   on :message, /^!untrack (.+)/ do |m, topic|
     if m.user.nick == "whitequark"
-      $untopics.push topic
-      $db.execute <<-SQL, topic
-        UPDATE topics SET untracked = 1 WHERE topic = ?
-      SQL
-      m.reply "untracked topic '#{topic}'", prefix: true
+      if topic_nfc = $topics.find { |t| t.toNFKC_Casefold == topic.toNFKC_Casefold }
+        $untopics.add topic_nfc
+        $db.execute <<-SQL, topic_nfc
+          UPDATE topics SET untracked = 1 WHERE topic = ?
+        SQL
+        m.reply "untracked topic '#{topic_nfc}'", prefix: true
+      else
+        m.reply "not tracking topic '#{topic}'", prefix: true
+      end
     else
       m.reply "you're not whitequark so no", prefix: true
     end
@@ -82,19 +100,19 @@ bot = Cinch::Bot.new do
   end
 
   on :message, /^!since (.+)/ do |m, topic|
-    if $topics.include? topic
+    if topic_nfc = $topics.find { |t| t.toNFKC_Casefold == topic.toNFKC_Casefold }
       mentioned = false
-      $db.execute <<-SQL, topic do |row|
+      $db.execute <<-SQL, topic_nfc do |row|
         SELECT * FROM mentions WHERE topic = ? ORDER BY posted_at DESC LIMIT 1
       SQL
         time_passed = TimeDifference.between(Time.now, Time.parse(row["posted_at"])).humanize
-        m.reply "time since last mention of '#{topic}': #{time_passed.downcase} " +
+        m.reply "time since last mention of '#{topic_nfc}': #{time_passed.downcase} " +
                 "(mentioned by #{row["posted_by"]})", prefix: true
         mentioned = true
       end
 
       if !mentioned
-        m.reply "no one has mentioned '#{topic}' so far", prefix: true
+        m.reply "no one has mentioned '#{topic_nfc}' so far", prefix: true
       end
     else
       m.reply "not tracking topic '#{topic}'", prefix: true
@@ -104,22 +122,26 @@ bot = Cinch::Bot.new do
   on :message, /^\s*([^!].+)/ do |m, text|
     next if !m.channel?
 
+    matched = Set.new
     $topics.each do |topic|
       next if $untopics.include? topic
-      next unless text.downcase.include? topic.downcase
+      next if matched.include? topic.toNFKC_Casefold
+      next unless text.toNFKC_Casefold.include? topic.toNFKC_Casefold
 
       context_ok = false
-      text.scan(/\w*#{Regexp.escape topic}\w*/i).each do |word|
+      text.toNFKC_Casefold.scan(/\w*#{Regexp.escape topic.toNFKC_Casefold}\w*/).each do |word|
         # "capture" shouldn't match "APT"
         # but, "fistulae" should match "fistula"
-        next if topic.downcase != word.downcase && ($words.include?(word.downcase) &&
-                                                    word.length != topic.length + 1)
+        next if topic.toNFKC_Casefold != word.toNFKC_Casefold &&
+                ($words.include?(word.toNFKC_Casefold) && word.length > topic.length + 1)
         # "UEFI" should match "EFI" but "edefic" should not match "EFI"
-        next if word.length > 2 * topic.length
+        next if word.length >= 2 * topic.length
         context_ok = true
       end
 
       next unless context_ok
+
+      matched.add(topic.toNFKC_Casefold)
 
       mentioned = false
       $db.execute <<-SQL, topic do |row|
