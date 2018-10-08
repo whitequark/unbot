@@ -111,7 +111,9 @@ bot = Cinch::Bot.new do
       context_ok = false
       text.scan(/\w*#{Regexp.escape topic}\w*/i).each do |word|
         # "capture" shouldn't match "APT"
-        next if topic.downcase != word.downcase && $words.include?(word.downcase)
+        # but, "fistulae" should match "fistula"
+        next if topic.downcase != word.downcase && ($words.include?(word.downcase) &&
+                                                    word.length != topic.length + 1)
         # "UEFI" should match "EFI" but "edefic" should not match "EFI"
         next if word.length > 2 * topic.length
         context_ok = true
