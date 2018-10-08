@@ -4,17 +4,18 @@ require 'cinch'
 require 'sqlite3'
 require 'time_difference'
 
-db = SQLite3::Database.new "unbot.db"
-db.results_as_hash = true
+$db = SQLite3::Database.new "unbot.db"
+$db.results_as_hash = true
 
-db.execute <<-SQL
+$db.execute <<-SQL
   CREATE TABLE IF NOT EXISTS topics (
     id int PRIMARY KEY,
     topic text UNIQUE,
-    added_by text
+    added_by text,
+    untracked boolean NOT NULL DEFAULT 0
   )
 SQL
-db.execute <<-SQL
+$db.execute <<-SQL
   CREATE TABLE IF NOT EXISTS mentions (
     id int PRIMARY KEY,
     topic text,
@@ -23,12 +24,20 @@ db.execute <<-SQL
   )
 SQL
 
-topics = []
-db.execute <<-SQL do |row|
-  SELECT * FROM topics
-SQL
-  topics.push row["topic"]
+def reload!
+  $topics = []
+  $untopics = []
+  $db.execute <<-SQL do |row|
+    SELECT * FROM topics
+  SQL
+    if row["untracked"] == 1
+      $untopics.push row["topic"]
+    else
+      $topics.push row["topic"]
+    end
+  end
 end
+reload!
 
 bot = Cinch::Bot.new do
   configure do |c|
@@ -38,21 +47,42 @@ bot = Cinch::Bot.new do
   end
 
   on :message, /^!track (.+)/ do |m, topic|
-    if topics.include? topic
+    if $untopics.include? topic
+      m.reply "not going to track '#{topic}' nope sorry", prefix: true
+    elsif $topics.include? topic
       m.reply "already tracking topic '#{topic}'", prefix: true
     else
-      topics.push topic
-      db.execute <<-SQL, topic, m.user.nick
+      $topics.push topic
+      $db.execute <<-SQL, topic, m.user.nick
         INSERT INTO topics (topic, added_by) VALUES (?, ?)
       SQL
       m.reply "now tracking topic '#{topic}'", prefix: true
     end
   end
 
+  on :message, /^!untrack (.+)/ do |m, topic|
+    if m.user.nick == "whitequark"
+      $untopics.push topic
+      $db.execute <<-SQL, topic
+        UPDATE topics SET untracked = 1 WHERE topic = ?
+      SQL
+      m.reply "untracked topic '#{topic}'", prefix: true
+    else
+      m.reply "you're not whitequark so no", prefix: true
+    end
+  end
+
+  on :message, /^!reload$/ do |m|
+    if m.user.nick == "whitequark"
+      reload!
+      m.reply "reloaded!", prefix: true
+    end
+  end
+
   on :message, /^!since (.+)/ do |m, topic|
-    if topics.include? topic
+    if $topics.include? topic
       mentioned = false
-      db.execute <<-SQL, topic do |row|
+      $db.execute <<-SQL, topic do |row|
         SELECT * FROM mentions WHERE topic = ? ORDER BY posted_at DESC LIMIT 1
       SQL
         time_passed = TimeDifference.between(Time.now, Time.parse(row["posted_at"])).humanize
@@ -70,10 +100,12 @@ bot = Cinch::Bot.new do
   end
 
   on :message, /^\s*([^!].+)/ do |m, text|
-    topics.each do |topic|
+    $topics.each do |topic|
+      next if $untopics.include? topic
+
       if text.downcase.include? topic.downcase
         mentioned = false
-        db.execute <<-SQL, topic do |row|
+        $db.execute <<-SQL, topic do |row|
           SELECT * FROM mentions WHERE topic = ? ORDER BY posted_at DESC LIMIT 1
         SQL
           if Time.now - Time.parse(row["posted_at"]) > 4 * 3600
@@ -88,7 +120,7 @@ bot = Cinch::Bot.new do
           m.reply "first mention of '#{topic}'! yay!"
         end
 
-        db.execute <<-SQL, topic, m.user.nick
+        $db.execute <<-SQL, topic, m.user.nick
           INSERT INTO mentions (topic, posted_by, posted_at) VALUES (?, ?, CURRENT_TIMESTAMP)
         SQL
       end
