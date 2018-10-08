@@ -24,6 +24,8 @@ $db.execute <<-SQL
   )
 SQL
 
+$words = File.read("/usr/share/dict/words").split("\n").map(&:downcase)
+
 def reload!
   $topics = []
   $untopics = []
@@ -102,28 +104,38 @@ bot = Cinch::Bot.new do
   on :message, /^\s*([^!].+)/ do |m, text|
     $topics.each do |topic|
       next if $untopics.include? topic
+      next unless text.downcase.include? topic.downcase
 
-      if text.downcase.include? topic.downcase
-        mentioned = false
-        $db.execute <<-SQL, topic do |row|
-          SELECT * FROM mentions WHERE topic = ? ORDER BY posted_at DESC LIMIT 1
-        SQL
-          if Time.now - Time.parse(row["posted_at"]) > 4 * 3600
-            time_passed = TimeDifference.between(Time.now, Time.parse(row["posted_at"])).humanize
-            m.reply "*flips* time since previous mention of '#{topic}': #{time_passed.downcase} " +
-                    "(mentioned by #{row["posted_by"]})"
-          end
-          mentioned = true
-        end
-
-        if !mentioned
-          m.reply "first mention of '#{topic}'! yay!"
-        end
-
-        $db.execute <<-SQL, topic, m.user.nick
-          INSERT INTO mentions (topic, posted_by, posted_at) VALUES (?, ?, CURRENT_TIMESTAMP)
-        SQL
+      context_ok = false
+      text.scan(/\w*#{Regexp.escape topic}\w*/i).each do |word|
+        # "capture" shouldn't match "APT"
+        next if topic.downcase != word.downcase && $words.include?(word.downcase)
+        # "UEFI" should match "EFI" but "edefic" should not match "EFI"
+        next if word.length > 2 * topic.length
+        context_ok = true
       end
+
+      next unless context_ok
+
+      mentioned = false
+      $db.execute <<-SQL, topic do |row|
+        SELECT * FROM mentions WHERE topic = ? ORDER BY posted_at DESC LIMIT 1
+      SQL
+        if Time.now - Time.parse(row["posted_at"]) > 4 * 3600
+          time_passed = TimeDifference.between(Time.now, Time.parse(row["posted_at"])).humanize
+          m.reply "*flips* time since previous mention of '#{topic}': #{time_passed.downcase} " +
+                  "(mentioned by #{row["posted_by"]})"
+        end
+        mentioned = true
+      end
+
+      if !mentioned
+        m.reply "first mention of '#{topic}'! yay!"
+      end
+
+      $db.execute <<-SQL, topic, m.user.nick
+        INSERT INTO mentions (topic, posted_by, posted_at) VALUES (?, ?, CURRENT_TIMESTAMP)
+      SQL
     end
   end
 end
