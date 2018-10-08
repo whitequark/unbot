@@ -34,7 +34,7 @@ bot = Cinch::Bot.new do
   configure do |c|
     c.server = "irc.freenode.org"
     c.nick = "unbot"
-    c.channels = ["##bottorture"]
+    c.channels = ["##whitequark"]
   end
 
   on :message, /^!track (.+)/ do |m, topic|
