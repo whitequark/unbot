@@ -102,6 +102,8 @@ bot = Cinch::Bot.new do
   end
 
   on :message, /^\s*([^!].+)/ do |m, text|
+    next if !m.channel?
+
     $topics.each do |topic|
       next if $untopics.include? topic
       next unless text.downcase.include? topic.downcase
