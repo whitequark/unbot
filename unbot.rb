@@ -107,7 +107,7 @@ bot = Cinch::Bot.new do
       SQL
         time_passed = TimeDifference.between(Time.now, Time.parse(row["posted_at"])).humanize
         m.reply "time since last mention of '#{topic_nfc}': #{time_passed.downcase} " +
-                "(mentioned by #{row["posted_by"]})", prefix: true
+                "(mentioned by #{row["posted_by"].sub(/(.)(.)/, "\\1\u200c\\2")})", prefix: true
         mentioned = true
       end
 
