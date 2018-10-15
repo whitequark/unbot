@@ -153,7 +153,7 @@ bot = Cinch::Bot.new do
             m.reply "nice"
           else
             m.reply "*flips* time since previous mention of '#{topic}': #{time_passed.downcase} " +
-                    "(mentioned by #{row["posted_by"]})"
+                    "(mentioned by #{row["posted_by"].sub(/(.)(.)/, "\\1\u200c\\2")})"
           end
         end
         mentioned = true
