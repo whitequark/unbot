@@ -80,10 +80,15 @@ bot = Cinch::Bot.new do
     if m.user.nick == "whitequark"
       if topic_nfc = $topics.find { |t| t.toNFKC_Casefold == topic.toNFKC_Casefold }
         $untopics.add topic_nfc
+        $db.execute <<-SQL, topic_nfc do |row|
+          SELECT * FROM topics WHERE topic = ?
+        SQL
+          m.reply "untracked topic '#{topic_nfc}' (thanks for nothing #{row['added_by']})",
+                  prefix: true
+        end
         $db.execute <<-SQL, topic_nfc
           UPDATE topics SET untracked = 1 WHERE topic = ?
         SQL
-        m.reply "untracked topic '#{topic_nfc}'", prefix: true
       else
         m.reply "not tracking topic '#{topic}'", prefix: true
       end
