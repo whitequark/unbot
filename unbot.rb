@@ -153,11 +153,17 @@ bot = Cinch::Bot.new do
         SELECT * FROM mentions WHERE topic = ? ORDER BY posted_at DESC LIMIT 1
       SQL
         if Time.now - Time.parse(row["posted_at"]) > 4 * 3600
+          time_delta  = Time.now - Time.parse(row["posted_at"])
           time_passed = TimeDifference.between(Time.now, Time.parse(row["posted_at"])).humanize
           if topic == "69"
             m.reply "nice"
           else
-            m.reply "*flips* time since previous mention of '#{topic}': #{time_passed.downcase} " +
+            if time_delta > 3 * 86400
+              flip = "*flips table*"
+            else
+              flip = "*flips*"
+            end
+            m.reply "#{flip} time since previous mention of '#{topic}': #{time_passed.downcase} " +
                     "(mentioned by #{row["posted_by"].sub(/(.)(.)/, "\\1\u200c\\2")})"
           end
         end
