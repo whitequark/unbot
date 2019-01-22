@@ -63,6 +63,8 @@ bot = Cinch::Bot.new do
   end
 
   on :message, /^!track (.+)/ do |m, topic|
+    next if !m.channel?
+
     if topic_nfc = $untopics.find { |t| t.toNFKC_Casefold == topic.toNFKC_Casefold }
       m.reply "not going to track '#{topic_nfc}' nope sorry", prefix: true
     elsif topic_nfc = $topics.find { |t| t.toNFKC_Casefold == topic.toNFKC_Casefold }
