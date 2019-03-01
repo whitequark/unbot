@@ -148,6 +148,8 @@ bot = Cinch::Bot.new do
                 ($words.include?(word.toNFKC_Casefold) && word.length > topic.length + 1)
         # "UEFI" should match "EFI" but "edefic" should not match "EFI"
         next if word.length >= 2 * topic.length
+        # prefix only
+        next if !word.toNFKC_Casefold.start_with?(topic.toNFKC_Casefold)
         context_ok = true
       end
 
